@@ -32,7 +32,8 @@ namespace InterviewExamWebApi
             //add swagger
             services.AddSwaggerGen();
 
-            services.AddDbContext<InterviewExamContext>();       
+            services.AddDbContext<InterviewExamContext>();
+            services.AddAutoMapper(typeof(Startup));
             services.AddControllers().AddNewtonsoftJson(options =>
                 options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
             );

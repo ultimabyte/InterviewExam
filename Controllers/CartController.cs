@@ -7,6 +7,7 @@ using InterviewExamWebApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using AutoMapper;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -18,11 +19,13 @@ namespace InterviewExamWebApi.Controllers
     {
         private readonly InterviewExamContext _context;
         private readonly ILogger _logger;
+        private readonly IMapper _mapper;
 
-        public CartController(InterviewExamContext context, ILogger<CartController> logger)
+        public CartController(InterviewExamContext context, ILogger<CartController> logger, IMapper mapper)
         {
             _context = context;
             _logger = logger;
+            _mapper = mapper;
         }
 
         // GET api/<CartController>/5
@@ -34,7 +37,7 @@ namespace InterviewExamWebApi.Controllers
                 var shoppingCart = await _context.TShoppingCarts.Include(s => s.TShoppingItems)
                     .FirstOrDefaultAsync(s => s.Id == shoppingCartId).ConfigureAwait(false);
 
-                return Ok(shoppingCart);
+                return Ok(_mapper.Map<TShoppingCartDTO>(shoppingCart));
             }
             catch (Exception ex)
             {
@@ -44,34 +47,36 @@ namespace InterviewExamWebApi.Controllers
         }
 
         // POST api/<CartController>
-        [HttpPost("addItemToCart")]
-        public async Task<IActionResult> Post([FromBody] ICollection<TShoppingItem> items)
+        [HttpPost("newCartWithItem")]
+        public async Task<IActionResult> Post([FromBody] ICollection<TShoppingItemDTO> items)
         {
             try
             {
                 TShoppingCart shoppingCart = new TShoppingCart();
                 shoppingCart.CreatedDate = DateTime.Now;
 
-                foreach (TShoppingItem item in items)
+                foreach (TShoppingItemDTO item in items)
                 {
                     TProductItem prodItem = await _context.TProductItems.FirstOrDefaultAsync(i => i.ProductId == item.ProductId).ConfigureAwait(false);
+                    
                     if (prodItem != null)
                     {
-                        if (prodItem.QuantityRemain <= item.Quantity)
+                        TShoppingItem newItem = _mapper.Map<TShoppingItem>(item);
+                        if (prodItem.QuantityRemain <= newItem.Quantity)
                         {
-                            item.Quantity = prodItem.QuantityRemain;
+                            newItem.Quantity = prodItem.QuantityRemain;
                         }
 
-                        item.Total = item.Price * item.Quantity;
-                        item.ShoppingCart = shoppingCart;
+                        newItem.Total = newItem.Price * newItem.Quantity;
+                        newItem.ShoppingCart = shoppingCart;
 
-                        _context.Add(item);
+                        _context.Add(newItem);
                     }
                 }
 
                 await _context.SaveChangesAsync().ConfigureAwait(false);
 
-                return Ok(shoppingCart);
+                return Ok(_mapper.Map<TShoppingCartDTO>(shoppingCart));
             }
             catch (Exception ex)
             {
@@ -80,23 +85,23 @@ namespace InterviewExamWebApi.Controllers
             }
         }
 
-        [HttpPut("updateItemCart")]
-        public async Task<IActionResult> Put(int cartId,[FromBody] ICollection<TShoppingItem> items)
+        [HttpPut("addUpdateItemExistingCart")]
+        public async Task<IActionResult> Put(int cartId,[FromBody] ICollection<TShoppingItemDTO> items)
         {
             try
             {
-                TShoppingItem updateItem = null;
+                TShoppingItem findItem = null;
                 TProductItem prodItem = null;
-                foreach (TShoppingItem item in items)
+                foreach (TShoppingItemDTO item in items)
                 {
-                    updateItem = await _context.TShoppingItems.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.ShoppingCartId == cartId).ConfigureAwait(false);
+                    findItem = await _context.TShoppingItems.FirstOrDefaultAsync(i => i.ProductId == item.ProductId && i.ShoppingCartId == cartId).ConfigureAwait(false);
                     prodItem = await _context.TProductItems.FirstOrDefaultAsync(i => i.ProductId == item.ProductId).ConfigureAwait(false);
 
-                    if (updateItem == null)
+                    if (findItem == null)
                     {
                         if (prodItem != null)
                         {
-                            TShoppingItem newItem = new TShoppingItem();
+                            TShoppingItem newItem = _mapper.Map<TShoppingItem>(item);
                             if (prodItem.QuantityRemain <= item.Quantity)
                             {
                                 newItem.Quantity = prodItem.QuantityRemain;
@@ -120,22 +125,23 @@ namespace InterviewExamWebApi.Controllers
                     {
                         if (prodItem != null)
                         {
-                            item.Id = updateItem.Id;
-                            item.ShoppingCartId = updateItem.ShoppingCartId;
-                            if (prodItem.QuantityRemain <= item.Quantity)
+                            TShoppingItem updateItem = _mapper.Map<TShoppingItem>(item);
+                            updateItem.ShoppingCartId = cartId;
+                            updateItem.Id = findItem.Id;
+                            if (prodItem.QuantityRemain <= updateItem.Quantity)
                             {
-                                item.Quantity = prodItem.QuantityRemain;
+                                updateItem.Quantity = prodItem.QuantityRemain;
                             }
 
-                            item.Total = item.Price * item.Quantity;
+                            updateItem.Total = updateItem.Price * updateItem.Quantity;
 
-                            _context.Entry(updateItem).State = EntityState.Detached;
+                            _context.Entry(findItem).State = EntityState.Detached;
                             _context.Entry(prodItem).State = EntityState.Detached;
-                            _context.Update(item);
+                            _context.Update(updateItem);
                         }
                         else
                         {
-                            _context.Entry(updateItem).State = EntityState.Detached;
+                            _context.Entry(findItem).State = EntityState.Detached;
                             _context.Entry(prodItem).State = EntityState.Detached;
                             _context.Remove(item);
                         }

@@ -5,9 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using InterviewExamWebApi.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Data.SqlClient;
-using System.Data.SqlTypes;
 using Microsoft.Extensions.Logging;
+using AutoMapper;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -19,11 +18,13 @@ namespace InterviewExamWebApi.Controllers
     {
         private readonly InterviewExamContext _context;
         private readonly ILogger _logger;
+        private readonly IMapper _mapper;
 
-        public ProductsController(InterviewExamContext context, ILogger<ProductsController> logger)
+        public ProductsController(InterviewExamContext context, ILogger<ProductsController> logger, IMapper mapper)
         {
             _context = context;
             _logger = logger;
+            _mapper = mapper;
         }
 
         [HttpGet("getProductList")]
@@ -32,12 +33,14 @@ namespace InterviewExamWebApi.Controllers
             try
             {
                 var product = await _context.TProducts
-                                    .Where(p => (id == default(int) ? p.Id != default(int) : p.Id == id) && (categoryId == default(int) ? p.ProductCategoryId != default(int) : p.ProductCategoryId == categoryId))
-                                    .Include(p => p.TProductInfos).Where(p => p.TProductInfos.Any(pi => (name == null ? pi.Title.Contains("") : pi.Title.Contains(name) && (detail == null ? pi.Detail.Contains("") : EF.Functions.Like(pi.Detail, "%" + detail + "%")))))
-                                    .Include(p => p.TProductItems).ToListAsync().ConfigureAwait(false);
+                                    .Where(p => (p.IsActive == true) &&(id == default(int) ? p.Id != default(int) : p.Id == id) && (categoryId == default(int) ? p.ProductCategoryId != default(int) : p.ProductCategoryId == categoryId))
+                                    .Include(p => p.TProductInfos)
+                                    .Where(p => p.TProductInfos.Any(pi => (name == null ? pi.Title.Contains("") : pi.Title.Contains(name) && (detail == null ? pi.Detail.Contains("") : EF.Functions.Like(pi.Detail, "%" + detail + "%")))))
+                                    .Include(p => p.TProductItems)
+                                    .Include(p => p.ProductCategory)
+                                    .ToListAsync().ConfigureAwait(false);
 
-                
-                return Ok(product);
+                return Ok(_mapper.Map<List<TProductDTO>>(product));
             }
             catch (Exception ex)
             {
@@ -48,7 +51,7 @@ namespace InterviewExamWebApi.Controllers
         }
 
         [HttpPost("addProduct")]
-        public async Task<IActionResult> Post([FromBody] TProduct product)
+        public async Task<IActionResult> Post([FromBody] TProductDTO product)
         {
             try
             {
@@ -64,29 +67,27 @@ namespace InterviewExamWebApi.Controllers
                     UpdatedDate = DateTime.Now,
                 };
 
-                TProductInfo tempPInfo = product.TProductInfos.First();
                 TProductInfo newProductInfo = new TProductInfo()
                 {
-                    Detail = tempPInfo.Detail,
-                    EffectDate = tempPInfo.EffectDate,
-                    Image1400x400 = tempPInfo.Image1400x400,
-                    Image2400x400 = tempPInfo.Image2400x400,
-                    Image3400x400 = tempPInfo.Image3400x400,
-                    Image4400x400 = tempPInfo.Image4400x400,
-                    Title = tempPInfo.Title,
+                    Detail = product.Detail,
+                    EffectDate = product.EffectDate,
+                    Image1400x400 = product.Image1400x400,
+                    Image2400x400 = product.Image2400x400,
+                    Image3400x400 = product.Image3400x400,
+                    Image4400x400 = product.Image4400x400,
+                    Title = product.Title,
                     Product = newProduct
                 };
 
-                TProductItem tempItem = product.TProductItems.First();
                 TProductItem newProductItem = new TProductItem()
                 {
-                    Barcode = tempItem.Barcode,
-                    DateIn = tempItem.DateIn,
-                    Quantity = tempItem.Quantity,
-                    QuantityMaximum = tempItem.QuantityMaximum,
-                    QuantityMinimum = tempItem.QuantityMinimum,
-                    QuantityRemain = tempItem.QuantityRemain,
-                    Price = tempItem.Price,
+                    Barcode = product.Barcode,
+                    DateIn = product.DateIn,
+                    Quantity = product.Quantity,
+                    QuantityMaximum = product.QuantityMaximum,
+                    QuantityMinimum = product.QuantityMinimum,
+                    QuantityRemain = product.QuantityRemain,
+                    Price = product.Price,
                     CreatedBy = "admin",
                     CreatedDate = DateTime.Now,
                     UpdatedBy = "admin",
@@ -97,7 +98,7 @@ namespace InterviewExamWebApi.Controllers
                 _context.AddRange(newProductItem, newProductInfo);
                 await _context.SaveChangesAsync().ConfigureAwait(false);
 
-                return Ok(newProduct);
+                return Ok(_mapper.Map<TProductDTO>(newProduct));
             }
             catch (Exception ex)
             {
@@ -108,59 +109,59 @@ namespace InterviewExamWebApi.Controllers
         }
 
         [HttpPut("updateProduct")]
-        public async Task<IActionResult> Put(int productId, [FromBody] TProduct product)
+        public async Task<IActionResult> Put(int productId, [FromBody] TProductDTO product)
         {
             try
             {
+                TProduct pr = _context.TProducts.Where(p => p.Id == productId).Include(p => p.TProductInfos).Include(p => p.TProductItems).FirstOrDefault();
                 TProduct updateProduct = new TProduct()
                 {
                     Id = productId,
                     ProductCategoryId = product.ProductCategoryId,
                     Name = product.Name,
                     Sku = product.Sku,
-                    CreatedBy = product.CreatedBy,
-                    CreatedDate = product.CreatedDate,
+                    CreatedBy = pr.CreatedBy,
+                    CreatedDate = pr.CreatedDate,
                     IsActive = product.IsActive,
                     UpdatedBy = "admin",
                     UpdatedDate = DateTime.Now
                 };
 
-                TProductInfo tempPInfo = product.TProductInfos.First();
                 TProductInfo updateProductInfo = new TProductInfo()
                 {
-                    Id = tempPInfo.Id,
-                    Detail = tempPInfo.Detail,
-                    EffectDate = tempPInfo.EffectDate,
-                    Image1400x400 = tempPInfo.Image1400x400,
-                    Image2400x400 = tempPInfo.Image2400x400,
-                    Image3400x400 = tempPInfo.Image3400x400,
-                    Image4400x400 = tempPInfo.Image4400x400,
-                    Title = tempPInfo.Title,
+                    Id = pr.TProductInfos.First().Id,
+                    Detail = product.Detail,
+                    EffectDate = product.EffectDate,
+                    Image1400x400 = product.Image1400x400,
+                    Image2400x400 = product.Image2400x400,
+                    Image3400x400 = product.Image3400x400,
+                    Image4400x400 = product.Image4400x400,
+                    Title = product.Title,
                     Product = updateProduct
                 };
 
-                TProductItem tempItem = product.TProductItems.First();
                 TProductItem updateProductItem = new TProductItem()
                 {
-                    Id = tempItem.Id,
-                    Barcode = tempItem.Barcode,
-                    DateIn = tempItem.DateIn,
-                    Quantity = tempItem.Quantity,
-                    QuantityMaximum = tempItem.QuantityMaximum,
-                    QuantityMinimum = tempItem.QuantityMinimum,
-                    QuantityRemain = tempItem.QuantityRemain,
-                    Price = tempItem.Price,
-                    CreatedBy = tempItem.CreatedBy,
-                    CreatedDate = tempItem.CreatedDate,
+                    Id = pr.TProductItems.First().Id,
+                    Barcode = product.Barcode,
+                    DateIn = product.DateIn,
+                    Quantity = product.Quantity,
+                    QuantityMaximum = product.QuantityMaximum,
+                    QuantityMinimum = product.QuantityMinimum,
+                    QuantityRemain = product.QuantityRemain,
+                    Price = product.Price,
+                    CreatedBy = pr.CreatedBy,
+                    CreatedDate = pr.CreatedDate,
                     UpdatedBy = "admin",
                     UpdatedDate = DateTime.Now,
                     Product = updateProduct
                 };
 
+                _context.Entry(pr).State = EntityState.Detached;
                 _context.UpdateRange(updateProductItem, updateProductInfo);
                 await _context.SaveChangesAsync().ConfigureAwait(false);
 
-                return Ok(updateProductInfo);
+                return Ok(_mapper.Map<TProductDTO>(updateProduct));
             }
             catch (Exception ex)
             {

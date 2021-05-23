@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using InterviewExamWebApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using AutoMapper;
 
 // For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
 
@@ -18,11 +19,13 @@ namespace InterviewExamWebApi.Controllers
 
         private readonly InterviewExamContext _context;
         private readonly ILogger _logger;
+        private readonly IMapper _mapper;
 
-        public OrdersController(InterviewExamContext context, ILogger<OrdersController> logger)
+        public OrdersController(InterviewExamContext context, ILogger<OrdersController> logger, IMapper mapper)
         {
             _context = context;
             _logger = logger;
+            _mapper = mapper;
         }
 
         [HttpGet("getOrder")]
@@ -30,13 +33,12 @@ namespace InterviewExamWebApi.Controllers
         {
             try
             {
-                var order = await _context.TOrders.Include(o => o.TOrderItems)
-                    .Include(o => o.ShoppingCart)
-                    .ThenInclude(oi => oi.TShoppingItems)
+                var order = await _context.TOrders
+                    .Include(o => o.TOrderItems)
                     .FirstOrDefaultAsync(o => o.Id == orderId)
                     .ConfigureAwait(false);
 
-                return Ok(order);
+                return Ok(_mapper.Map<TOrderDTO>(order));
             }
             catch (Exception ex)
             {
@@ -46,19 +48,11 @@ namespace InterviewExamWebApi.Controllers
         }
 
         [HttpPost("createOrder")]
-        public async Task<IActionResult> Post([FromBody] TOrder order)
+        public async Task<IActionResult> Post([FromBody] TOrderDTO order)
         {
             try
             {
-                TOrder newOrder = new TOrder()
-                {
-                    ShoppingCartId = order.ShoppingCartId,
-                    Address1 = order.Address1,
-                    Address2 = order.Address2,
-                    CustomerName = order.CustomerName,
-                    Email = order.Email,
-                    Telephone = order.Telephone
-                };
+                TOrder newOrder = _mapper.Map<TOrder>(order);
 
                 var itemList = await _context.TShoppingItems.Where(it => it.ShoppingCartId == order.ShoppingCartId)
                                 .ToListAsync().ConfigureAwait(false);
@@ -96,7 +90,8 @@ namespace InterviewExamWebApi.Controllers
 
                 await _context.SaveChangesAsync().ConfigureAwait(false);
 
-                return Ok(newOrder);
+
+                return Ok(_mapper.Map<TOrderDTO>(newOrder));
             }
             catch (Exception ex)
             {
@@ -106,24 +101,22 @@ namespace InterviewExamWebApi.Controllers
         }
 
         [HttpPut("updateOrderDetail")]
-        public async Task<IActionResult> Put([FromBody] TOrder order)
+        public async Task<IActionResult> Put(int orderId, [FromBody] TOrderDTO order)
         {
             try
             {
-                TOrder updateOrder = await _context.TOrders.FirstOrDefaultAsync(o => o.Id == order.Id).ConfigureAwait(true);
 
-                if (updateOrder != null)
-                {
-                    updateOrder.CustomerName = order.CustomerName;
-                    updateOrder.Address1 = order.Address1;
-                    updateOrder.Address2 = order.Address2;
-                    updateOrder.Email = order.Email;
-                    updateOrder.Telephone = order.Telephone;
+                TOrder uOrder = _mapper.Map<TOrder>(order);
 
-                    await _context.SaveChangesAsync().ConfigureAwait(false);
-                }
+                _context.Update(uOrder);
+                await _context.SaveChangesAsync().ConfigureAwait(false);
 
-                return Ok(order.Id);
+                var updateOrder = await _context.TOrders
+                    .Include(o => o.TOrderItems)
+                    .FirstOrDefaultAsync(o => o.Id == orderId)
+                    .ConfigureAwait(false);
+
+                return Ok(_mapper.Map<TOrderDTO>(updateOrder));
             }
             catch (Exception ex)
             {
