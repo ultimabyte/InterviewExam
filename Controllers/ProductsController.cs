@@ -26,7 +26,6 @@ namespace InterviewExamWebApi.Controllers
             _logger = logger;
         }
 
-        // GET api/<ProductsController>/
         [HttpGet("getProductList")]
         public async Task<IActionResult> Get(int id, int categoryId, string name, string detail, DateTime dateStart, DateTime dateEnd)
         {
